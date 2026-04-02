@@ -13,8 +13,27 @@ function asSingleParam(value: string | string[] | undefined): string | null {
 const brandSelect = {
   id: true,
   name: true,
-  slug: true
+  slug: true,
+  logoUrl: true
 } as const;
+
+/** POST: undefined = omit; null / "" = store null; non-empty string = trimmed URL. Invalid type → null sentinel for 400. */
+function asLogoUrlForCreate(value: unknown): string | null | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return "invalid";
+  const t = value.trim();
+  return t === "" ? null : t;
+}
+
+/** PATCH: undefined = no change; null / "" = clear; string = set trimmed (null if empty). */
+function asPatchLogoUrl(value: unknown): "omit" | "clear" | string | "invalid" {
+  if (value === undefined) return "omit";
+  if (value === null) return "clear";
+  if (typeof value !== "string") return "invalid";
+  const t = value.trim();
+  return t === "" ? "clear" : t;
+}
 
 router.get("/", async (_req, res, next) => {
   try {
@@ -53,7 +72,7 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { name, slug } = req.body as { name?: unknown; slug?: unknown };
+    const { name, slug, logoUrl } = req.body as { name?: unknown; slug?: unknown; logoUrl?: unknown };
 
     if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ error: "name is required" });
@@ -63,10 +82,16 @@ router.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "slug is required" });
     }
 
+    const parsedLogo = asLogoUrlForCreate(logoUrl);
+    if (parsedLogo === "invalid") {
+      return res.status(400).json({ error: "logoUrl must be a string or null" });
+    }
+
     const created = await prisma.brand.create({
       data: {
         name: name.trim(),
-        slug: slug.trim()
+        slug: slug.trim(),
+        ...(parsedLogo !== undefined ? { logoUrl: parsedLogo } : {})
       },
       select: brandSelect
     });
@@ -89,7 +114,7 @@ router.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid brand id" });
     }
 
-    const { name, slug } = req.body as { name?: unknown; slug?: unknown };
+    const { name, slug, logoUrl } = req.body as { name?: unknown; slug?: unknown; logoUrl?: unknown };
 
     if (name !== undefined && (typeof name !== "string" || !name.trim())) {
       return res.status(400).json({ error: "name must be a non-empty string" });
@@ -99,11 +124,20 @@ router.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "slug must be a non-empty string" });
     }
 
+    const patchLogo = asPatchLogoUrl(logoUrl);
+    if (patchLogo === "invalid") {
+      return res.status(400).json({ error: "logoUrl must be a string or null" });
+    }
+
+    const logoUpdate: Pick<Prisma.BrandUpdateInput, "logoUrl"> | Record<string, never> =
+      patchLogo === "omit" ? {} : patchLogo === "clear" ? { logoUrl: null } : { logoUrl: patchLogo };
+
     const updated = await prisma.brand.update({
       where: { id: brandId },
       data: {
         ...(name !== undefined ? { name: name.trim() } : {}),
-        ...(slug !== undefined ? { slug: slug.trim() } : {})
+        ...(slug !== undefined ? { slug: slug.trim() } : {}),
+        ...logoUpdate
       },
       select: brandSelect
     });

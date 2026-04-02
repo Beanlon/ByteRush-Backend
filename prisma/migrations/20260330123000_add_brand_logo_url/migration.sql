@@ -1,0 +1,2 @@
+ALTER TABLE `Brand`
+ADD COLUMN `logoUrl` VARCHAR(191) NULL;

@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
+    "hash-password": "node scripts/hash-password.mjs",
     "postinstall": "prisma generate"
   },
   "repository": {

@@ -1,10 +1,11 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt, { type JwtPayload } from "jsonwebtoken";
+import { normalizeJwtSecret } from "../lib/jwt-secret.js";
 import { prisma } from "../lib/prisma.js";
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = normalizeJwtSecret(process.env.JWT_SECRET);
 
 if (!JWT_SECRET) {
   throw new Error("JWT_SECRET is required");
@@ -14,12 +15,18 @@ const safeUserSelect = {
   id: true,
   email: true,
   displayName: true,
-  createdAt: true
+  createdAt: true,
+  role: true,
+} as const;
+
+const loginUserSelect = {
+  ...safeUserSelect,
+  passwordHash: true,
 } as const;
 
 router.post("/register", async (req, res, next) => {
   try {
-    const { email, password, displayName } = req.body as {
+    const { email, password, displayName } = (req.body ?? {}) as {
       email?: string;
       password?: string;
       displayName?: string;
@@ -41,7 +48,11 @@ router.post("/register", async (req, res, next) => {
       select: safeUserSelect
     });
 
-    const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign(
+      { sub: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "7d" },
+    );
 
     return res.status(201).json({ user, token });
   } catch (err) {
@@ -51,13 +62,13 @@ router.post("/register", async (req, res, next) => {
 
 router.post("/login", async (req, res, next) => {
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
+    const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
 
     if (!email || !password) {
       return res.status(400).json({ error: "email and password are required" });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email }, select: loginUserSelect });
     if (!user?.passwordHash) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -67,16 +78,21 @@ router.post("/login", async (req, res, next) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign(
+      { sub: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "7d" },
+    );
 
     return res.json({
       user: {
         id: user.id,
         email: user.email,
         displayName: user.displayName,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        role: user.role,
       },
-      token
+      token,
     });
   } catch (err) {
     next(err);

@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { Router, type RequestHandler } from "express";
 import jwt, { type JwtPayload } from "jsonwebtoken";
+import { normalizeJwtSecret } from "../lib/jwt-secret.js";
 import { prisma } from "../lib/prisma.js";
 
 declare global {
@@ -12,7 +13,7 @@ declare global {
 }
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = normalizeJwtSecret(process.env.JWT_SECRET);
 
 if (!JWT_SECRET) {
   throw new Error("JWT_SECRET is required");

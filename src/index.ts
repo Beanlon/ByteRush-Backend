@@ -9,9 +9,16 @@ import userRoutes from "./routes/user.js";
 
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 4000;
 
 app.use(express.json());
+// Express 5 can leave `req.body` undefined; destructuring it throws → 500.
+app.use((req, _res, next) => {
+  if (req.body === undefined) {
+    req.body = {};
+  }
+  next();
+});
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -25,7 +32,12 @@ app.use("/users", userRoutes);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
-  res.status(500).json({ error: "Internal server error" });
+  const debug =
+    process.env.NODE_ENV !== "production" && err instanceof Error ? err.message : undefined;
+  res.status(500).json({
+    error: "Internal server error",
+    ...(debug && { debug }),
+  });
 });
 
 const server = app.listen(PORT, () => {
