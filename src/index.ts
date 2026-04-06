@@ -4,6 +4,7 @@ import { prisma } from "./lib/prisma.js";
 import { authRoutes } from "./routes/auth.js";
 import brandRoutes from "./routes/brand.js";
 import categoryRoutes from "./routes/category.js";
+import heroImageRoutes from "./routes/hero-image.js";
 import productRoutes from "./routes/product.js";
 import userRoutes from "./routes/user.js";
 
@@ -27,6 +28,7 @@ app.get("/health", (_req, res) => {
 app.use("/auth", authRoutes);
 app.use("/brands", brandRoutes);
 app.use("/categories", categoryRoutes);
+app.use("/hero-images", heroImageRoutes);
 app.use("/products", productRoutes);
 app.use("/users", userRoutes);
 

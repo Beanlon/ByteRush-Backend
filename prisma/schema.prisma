@@ -77,6 +77,16 @@ model ProductImage {
   @@index([productId])
 }
 
+model HeroImage {
+  id        String   @id @default(uuid())
+  imageUrl  String
+  alt       String?
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 enum UserRole {
   USER
   ADMIN
