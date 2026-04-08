@@ -3,7 +3,8 @@ import { prisma } from "./prisma.js";
 /** Row shape returned when using the shared hero select object. */
 export type HeroImageRow = {
   id: string;
-  imageUrl: string;
+  imageMimeType: string;
+  imageFileName: string | null;
   alt: string | null;
   sortOrder: number;
   active: boolean;
@@ -13,12 +14,19 @@ export type HeroImageRow = {
 
 type HeroSelect = {
   id: true;
-  imageUrl: true;
+  imageMimeType?: true;
+  imageFileName?: true;
+  imageData?: true;
   alt: true;
   sortOrder: true;
   active: true;
   createdAt: true;
   updatedAt: true;
+};
+
+type HeroImageBinaryRow = {
+  imageData: Uint8Array;
+  imageMimeType: string;
 };
 
 type HeroImageDelegate = {
@@ -28,9 +36,15 @@ type HeroImageDelegate = {
       { sortOrder: "asc" | "desc" } | { createdAt: "asc" | "desc" }
     >;
   }): Promise<HeroImageRow[]>;
+  findUnique(args: {
+    where: { id: string };
+    select: { imageData: true; imageMimeType: true };
+  }): Promise<HeroImageBinaryRow | null>;
   create(args: {
     data: {
-      imageUrl: string;
+      imageData: Uint8Array;
+      imageMimeType: string;
+      imageFileName?: string | null;
       alt?: string | null;
       sortOrder?: number;
       active?: boolean;
@@ -40,7 +54,6 @@ type HeroImageDelegate = {
   update(args: {
     where: { id: string };
     data: {
-      imageUrl?: string;
       alt?: string | null;
       sortOrder?: number;
       active?: boolean;
