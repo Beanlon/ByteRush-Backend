@@ -1,0 +1,2 @@
+ALTER TABLE `HeroImage`
+  ADD COLUMN `linkUrl` VARCHAR(191) NULL;

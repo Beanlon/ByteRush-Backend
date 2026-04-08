@@ -22,6 +22,7 @@ function asSingleParam(value: string | string[] | undefined): string | null {
 
 const heroSelect = {
   id: true,
+  linkUrl: true,
   alt: true,
   sortOrder: true,
   active: true,
@@ -33,6 +34,15 @@ const heroSelect = {
 
 function toImageUrl(req: any, id: string): string {
   return `${req.protocol}://${req.get("host")}/hero-images/${encodeURIComponent(id)}/file`;
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 router.get("/", async (req, res, next) => {
@@ -80,12 +90,19 @@ router.post("/", upload.single("image"), async (req, res, next) => {
 
     const altRaw = typeof req.body?.alt === "string" ? req.body.alt : "";
     const alt = altRaw.trim() || null;
+    const linkUrlRaw = typeof req.body?.linkUrl === "string" ? req.body.linkUrl : "";
+    const linkUrl = linkUrlRaw.trim() || null;
+
+    if (linkUrl && !isValidHttpUrl(linkUrl)) {
+      return res.status(400).json({ error: "linkUrl must be a valid URL" });
+    }
 
     const created = await heroImageDb.create({
       data: {
         imageData: file.buffer,
         imageMimeType: file.mimetype,
         imageFileName: file.originalname,
+        linkUrl,
         alt,
       },
       select: heroSelect,
@@ -105,13 +122,19 @@ router.patch("/:id", async (req, res, next) => {
     const id = asSingleParam(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid hero image id" });
 
-    const { alt, sortOrder, active } = (req.body ?? {}) as {
+    const { alt, sortOrder, active, linkUrl } = (req.body ?? {}) as {
       alt?: unknown;
       sortOrder?: unknown;
       active?: unknown;
+      linkUrl?: unknown;
     };
 
-    const patch: { alt?: string | null; sortOrder?: number; active?: boolean } = {};
+    const patch: {
+      alt?: string | null;
+      sortOrder?: number;
+      active?: boolean;
+      linkUrl?: string | null;
+    } = {};
 
     if (alt !== undefined) {
       if (alt !== null && typeof alt !== "string") {
@@ -130,6 +153,16 @@ router.patch("/:id", async (req, res, next) => {
         return res.status(400).json({ error: "active must be a boolean" });
       }
       patch.active = active;
+    }
+    if (linkUrl !== undefined) {
+      if (linkUrl !== null && typeof linkUrl !== "string") {
+        return res.status(400).json({ error: "linkUrl must be a string or null" });
+      }
+      const normalized = typeof linkUrl === "string" ? linkUrl.trim() : "";
+      if (normalized && !isValidHttpUrl(normalized)) {
+        return res.status(400).json({ error: "linkUrl must be a valid URL" });
+      }
+      patch.linkUrl = normalized || null;
     }
 
     if (Object.keys(patch).length === 0) {

@@ -3,6 +3,7 @@ import { prisma } from "./prisma.js";
 /** Row shape returned when using the shared hero select object. */
 export type HeroImageRow = {
   id: string;
+  linkUrl: string | null;
   imageMimeType: string;
   imageFileName: string | null;
   alt: string | null;
@@ -14,6 +15,7 @@ export type HeroImageRow = {
 
 type HeroSelect = {
   id: true;
+  linkUrl?: true;
   imageMimeType?: true;
   imageFileName?: true;
   imageData?: true;
@@ -45,6 +47,7 @@ type HeroImageDelegate = {
       imageData: Uint8Array;
       imageMimeType: string;
       imageFileName?: string | null;
+      linkUrl?: string | null;
       alt?: string | null;
       sortOrder?: number;
       active?: boolean;
@@ -57,6 +60,7 @@ type HeroImageDelegate = {
       alt?: string | null;
       sortOrder?: number;
       active?: boolean;
+      linkUrl?: string | null;
     };
     select: HeroSelect;
   }): Promise<HeroImageRow>;
