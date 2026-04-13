@@ -14,7 +14,7 @@ const categorySelect = {
   id: true,
   name: true,
   slug: true,
-  parentId: true
+  sortOrder: true,
 } as const;
 
 router.get("/", async (_req, res, next) => {
@@ -54,7 +54,11 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { name, slug, parentId } = req.body as { name?: unknown; slug?: unknown; parentId?: unknown };
+    const { name, slug, sortOrder } = req.body as {
+      name?: unknown;
+      slug?: unknown;
+      sortOrder?: unknown;
+    };
 
     if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ error: "name is required" });
@@ -64,17 +68,25 @@ router.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "slug is required" });
     }
 
-    if (parentId !== undefined && parentId !== null && (typeof parentId !== "string" || !parentId.trim())) {
-      return res.status(400).json({ error: "parentId must be a non-empty string or null" });
+    const sort =
+      sortOrder === undefined
+        ? undefined
+        : typeof sortOrder === "number" && Number.isFinite(sortOrder)
+          ? Math.trunc(sortOrder)
+          : typeof sortOrder === "string" && sortOrder.trim() !== "" && Number.isFinite(Number(sortOrder))
+            ? Math.trunc(Number(sortOrder))
+            : null;
+    if (sort === null) {
+      return res.status(400).json({ error: "sortOrder must be a finite number when provided" });
     }
 
     const created = await prisma.category.create({
       data: {
         name: name.trim(),
         slug: slug.trim(),
-        ...(parentId !== undefined ? { parentId: parentId === null ? null : (parentId as string).trim() } : {})
+        ...(sort !== undefined ? { sortOrder: sort } : {}),
       },
-      select: categorySelect
+      select: categorySelect,
     });
 
     return res.status(201).json(created);
@@ -82,10 +94,6 @@ router.post("/", async (req, res, next) => {
     const prismaError = err as Prisma.PrismaClientKnownRequestError;
     if (prismaError?.code === "P2002") {
       return res.status(409).json({ error: "Category slug already exists" });
-    }
-
-    if (prismaError?.code === "P2003") {
-      return res.status(400).json({ error: "Invalid parentId" });
     }
 
     next(err);
@@ -99,7 +107,11 @@ router.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid category id" });
     }
 
-    const { name, slug, parentId } = req.body as { name?: unknown; slug?: unknown; parentId?: unknown };
+    const { name, slug, sortOrder } = req.body as {
+      name?: unknown;
+      slug?: unknown;
+      sortOrder?: unknown;
+    };
 
     if (name !== undefined && (typeof name !== "string" || !name.trim())) {
       return res.status(400).json({ error: "name must be a non-empty string" });
@@ -109,12 +121,18 @@ router.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "slug must be a non-empty string" });
     }
 
-    if (parentId !== undefined && parentId !== null && (typeof parentId !== "string" || !parentId.trim())) {
-      return res.status(400).json({ error: "parentId must be a non-empty string or null" });
-    }
-
-    if (typeof parentId === "string" && parentId.trim() === categoryId) {
-      return res.status(400).json({ error: "A category cannot be its own parent" });
+    let sortPatch: { sortOrder: number } | Record<string, never> = {};
+    if (sortOrder !== undefined) {
+      const s =
+        typeof sortOrder === "number" && Number.isFinite(sortOrder)
+          ? Math.trunc(sortOrder)
+          : typeof sortOrder === "string" && sortOrder.trim() !== "" && Number.isFinite(Number(sortOrder))
+            ? Math.trunc(Number(sortOrder))
+            : null;
+      if (s === null) {
+        return res.status(400).json({ error: "sortOrder must be a finite number when provided" });
+      }
+      sortPatch = { sortOrder: s };
     }
 
     const updated = await prisma.category.update({
@@ -122,9 +140,9 @@ router.patch("/:id", async (req, res, next) => {
       data: {
         ...(name !== undefined ? { name: name.trim() } : {}),
         ...(slug !== undefined ? { slug: slug.trim() } : {}),
-        ...(parentId !== undefined ? { parentId: parentId === null ? null : (parentId as string).trim() } : {})
+        ...sortPatch,
       },
-      select: categorySelect
+      select: categorySelect,
     });
 
     return res.json(updated);
@@ -132,10 +150,6 @@ router.patch("/:id", async (req, res, next) => {
     const prismaError = err as Prisma.PrismaClientKnownRequestError;
     if (prismaError?.code === "P2002") {
       return res.status(409).json({ error: "Category slug already exists" });
-    }
-
-    if (prismaError?.code === "P2003") {
-      return res.status(400).json({ error: "Invalid parentId" });
     }
 
     if (prismaError?.code === "P2025") {
