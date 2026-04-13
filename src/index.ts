@@ -1,16 +1,27 @@
 import "dotenv/config";
+import cors from "cors";
 import express from "express";
 import { prisma } from "./lib/prisma.js";
 import { authRoutes } from "./routes/auth.js";
 import brandRoutes from "./routes/brand.js";
 import categoryRoutes from "./routes/category.js";
 import heroImageRoutes from "./routes/hero-image.js";
+import itemTypeRoutes from "./routes/item-type.js";
 import productRoutes from "./routes/product.js";
 import userRoutes from "./routes/user.js";
 
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
+
+const corsOrigins = process.env.CORS_ORIGIN?.split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin: corsOrigins?.length ? corsOrigins : true,
+  }),
+);
 
 app.use(express.json());
 // Express 5 can leave `req.body` undefined; destructuring it throws → 500.
@@ -28,6 +39,7 @@ app.get("/health", (_req, res) => {
 app.use("/auth", authRoutes);
 app.use("/brands", brandRoutes);
 app.use("/categories", categoryRoutes);
+app.use("/item-types", itemTypeRoutes);
 app.use("/hero-images", heroImageRoutes);
 app.use("/products", productRoutes);
 app.use("/users", userRoutes);

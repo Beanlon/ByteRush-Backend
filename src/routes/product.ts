@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { ProductStatus } from "@prisma/client";
 import { Router } from "express";
-import { prisma } from "../lib/prisma.js";
+import { prisma, prismaItemType } from "../lib/prisma.js";
 
 const router = Router();
 
@@ -68,10 +68,40 @@ function uniqueViolationField(err: Prisma.PrismaClientKnownRequestError): string
   return Array.isArray(target) && typeof target[0] === "string" ? target[0] : undefined;
 }
 
+/** PATCH itemTypeId: undefined = omit; null / "" = clear; string = set trimmed. */
+function asPatchItemTypeId(value: unknown): "omit" | "clear" | string | "invalid" {
+  if (value === undefined) return "omit";
+  if (value === null || value === "") return "clear";
+  if (typeof value !== "string") return "invalid";
+  const t = value.trim();
+  return t === "" ? "clear" : t;
+}
+
+async function assertItemTypeMatchesCategory(
+  categoryId: string,
+  itemTypeId: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (itemTypeId === null) {
+    return { ok: true };
+  }
+  const itemType = await prismaItemType.findUnique({
+    where: { id: itemTypeId },
+    select: { categoryId: true },
+  });
+  if (!itemType) {
+    return { ok: false, error: "Invalid itemTypeId" };
+  }
+  if (itemType.categoryId !== categoryId) {
+    return { ok: false, error: "itemTypeId does not belong to this categoryId" };
+  }
+  return { ok: true };
+}
+
 const productSelect = {
   id: true,
   categoryId: true,
   brandId: true,
+  itemTypeId: true,
   sku: true,
   lowStockAlert: true,
   name: true,
@@ -89,6 +119,14 @@ const productSelect = {
       name: true,
       slug: true,
       logoUrl: true
+    }
+  },
+  itemType: {
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      categoryId: true
     }
   }
 } as const;
@@ -130,10 +168,11 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { categoryId, brandId, sku, lowStockAlert, name, slug, description, price, stockQty, specs, status } =
+    const { categoryId, brandId, itemTypeId, sku, lowStockAlert, name, slug, description, price, stockQty, specs, status } =
       req.body as {
         categoryId?: unknown;
         brandId?: unknown;
+        itemTypeId?: unknown;
         sku?: unknown;
         lowStockAlert?: unknown;
         name?: unknown;
@@ -151,6 +190,24 @@ router.post("/", async (req, res, next) => {
 
     if (typeof brandId !== "string" || !brandId.trim()) {
       return res.status(400).json({ error: "brandId is required" });
+    }
+
+    const catTrim = categoryId.trim();
+    let resolvedItemTypeId: string | null | undefined;
+    if (itemTypeId === undefined || itemTypeId === null || itemTypeId === "") {
+      resolvedItemTypeId = undefined;
+    } else if (typeof itemTypeId !== "string") {
+      return res.status(400).json({ error: "itemTypeId must be a string, null, or omitted" });
+    } else {
+      const t = itemTypeId.trim();
+      resolvedItemTypeId = t === "" ? undefined : t;
+    }
+
+    if (resolvedItemTypeId !== undefined) {
+      const match = await assertItemTypeMatchesCategory(catTrim, resolvedItemTypeId);
+      if (!match.ok) {
+        return res.status(400).json({ error: match.error });
+      }
     }
 
     if (typeof name !== "string" || !name.trim()) {
@@ -192,10 +249,11 @@ router.post("/", async (req, res, next) => {
     }
 
     const createData: Prisma.ProductUncheckedCreateInput = {
-      categoryId: categoryId.trim(),
+      categoryId: catTrim,
       brandId: brandId.trim(),
       name: name.trim(),
       slug: slug.trim(),
+      ...(resolvedItemTypeId !== undefined ? { itemTypeId: resolvedItemTypeId } : {}),
       ...(parsedSku !== undefined ? { sku: parsedSku } : {}),
       ...(parsedLowStockAlert !== undefined ? { lowStockAlert: parsedLowStockAlert } : {}),
       ...(asOptionalString(description) !== undefined ? { description: asOptionalString(description) } : {}),
@@ -222,7 +280,7 @@ router.post("/", async (req, res, next) => {
     }
 
     if (prismaError?.code === "P2003") {
-      return res.status(400).json({ error: "Invalid categoryId or brandId" });
+      return res.status(400).json({ error: "Invalid categoryId, brandId, or itemTypeId" });
     }
 
     next(err);
@@ -236,10 +294,11 @@ router.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid product id" });
     }
 
-    const { categoryId, brandId, sku, lowStockAlert, name, slug, description, price, stockQty, specs, status } =
+    const { categoryId, brandId, itemTypeId, sku, lowStockAlert, name, slug, description, price, stockQty, specs, status } =
       req.body as {
         categoryId?: unknown;
         brandId?: unknown;
+        itemTypeId?: unknown;
         sku?: unknown;
         lowStockAlert?: unknown;
         name?: unknown;
@@ -296,6 +355,35 @@ router.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "sku must be a string, null, or empty string to clear" });
     }
 
+    const patchItemTypeResult = asPatchItemTypeId(itemTypeId);
+    if (patchItemTypeResult === "invalid") {
+      return res.status(400).json({ error: "itemTypeId must be a string, null, or empty string to clear" });
+    }
+
+    const existingRow = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { categoryId: true, itemTypeId: true } as unknown as Prisma.ProductSelect,
+    });
+    const existing = existingRow as unknown as
+      | { categoryId: string; itemTypeId: string | null }
+      | null;
+    if (!existing) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    const nextCategory = categoryId !== undefined ? categoryId.trim() : existing.categoryId;
+    const nextItemTypeId: string | null =
+      patchItemTypeResult === "omit"
+        ? (existing.itemTypeId ?? null)
+        : patchItemTypeResult === "clear"
+          ? null
+          : patchItemTypeResult;
+
+    const typeCheck = await assertItemTypeMatchesCategory(nextCategory, nextItemTypeId);
+    if (!typeCheck.ok) {
+      return res.status(400).json({ error: typeCheck.error });
+    }
+
     const parsedLowStockAlertPatch = asOptionalNonNegativeInt(lowStockAlert);
     if (lowStockAlert !== undefined && parsedLowStockAlertPatch === undefined) {
       return res.status(400).json({ error: "lowStockAlert must be a non-negative integer" });
@@ -308,6 +396,9 @@ router.patch("/:id", async (req, res, next) => {
           ? { sku: null }
           : { sku: patchSkuResult };
 
+    const itemTypeUpdate: { itemTypeId?: string | null } =
+      patchItemTypeResult === "omit" ? {} : { itemTypeId: nextItemTypeId };
+
     const updateData: Prisma.ProductUncheckedUpdateInput = {
       ...(categoryId !== undefined ? { categoryId: categoryId.trim() } : {}),
       ...(brandId !== undefined ? { brandId: brandId.trim() } : {}),
@@ -319,6 +410,7 @@ router.patch("/:id", async (req, res, next) => {
       ...(specs !== undefined ? { specs: parsedSpecs } : {}),
       ...(status !== undefined ? { status: parsedStatus } : {}),
       ...skuUpdate,
+      ...itemTypeUpdate,
       ...(parsedLowStockAlertPatch !== undefined ? { lowStockAlert: parsedLowStockAlertPatch } : {})
     };
 
@@ -340,7 +432,7 @@ router.patch("/:id", async (req, res, next) => {
     }
 
     if (prismaError?.code === "P2003") {
-      return res.status(400).json({ error: "Invalid categoryId or brandId" });
+      return res.status(400).json({ error: "Invalid categoryId, brandId, or itemTypeId" });
     }
 
     if (prismaError?.code === "P2025") {
