@@ -44,10 +44,17 @@ app.use("/hero-images", heroImageRoutes);
 app.use("/products", productRoutes);
 app.use("/users", userRoutes);
 
+function errorDebugMessage(err: unknown): string | undefined {
+  if (err instanceof Error && err.message) return err.message;
+  return undefined;
+}
+
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
-  const debug =
-    process.env.NODE_ENV !== "production" && err instanceof Error ? err.message : undefined;
+  const exposeDetails =
+    process.env.NODE_ENV !== "production" ||
+    /^(1|true|yes)$/i.test(process.env.API_DEBUG_ERRORS?.trim() ?? "");
+  const debug = exposeDetails ? errorDebugMessage(err) : undefined;
   res.status(500).json({
     error: "Internal server error",
     ...(debug && { debug }),

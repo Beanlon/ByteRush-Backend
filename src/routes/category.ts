@@ -10,18 +10,18 @@ function asSingleParam(value: string | string[] | undefined): string | null {
   return null;
 }
 
-const categorySelect = {
+/** Only fields the admin UI needs; avoids 500 if prod DB is behind migrations (no `sort_order` yet). */
+const categoryResponseSelect = {
   id: true,
   name: true,
   slug: true,
-  sortOrder: true,
 } as const;
 
 router.get("/", async (_req, res, next) => {
   try {
     const categories = await prisma.category.findMany({
-      select: categorySelect,
-      orderBy: { name: "asc" }
+      select: categoryResponseSelect,
+      orderBy: { name: "asc" },
     });
 
     return res.json(categories);
@@ -39,7 +39,7 @@ router.get("/:id", async (req, res, next) => {
 
     const category = await prisma.category.findUnique({
       where: { id: categoryId },
-      select: categorySelect
+      select: categoryResponseSelect,
     });
 
     if (!category) {
@@ -86,7 +86,7 @@ router.post("/", async (req, res, next) => {
         slug: slug.trim(),
         ...(sort !== undefined ? { sortOrder: sort } : {}),
       },
-      select: categorySelect,
+      select: categoryResponseSelect,
     });
 
     return res.status(201).json(created);
@@ -142,7 +142,7 @@ router.patch("/:id", async (req, res, next) => {
         ...(slug !== undefined ? { slug: slug.trim() } : {}),
         ...sortPatch,
       },
-      select: categorySelect,
+      select: categoryResponseSelect,
     });
 
     return res.json(updated);
